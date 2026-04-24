@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BFHL Submission</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    h2 {
+      margin-bottom: 4px;
+    }
+
+    p.sub {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 10px;
+      font-size: 0.95rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 8px 22px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button:hover { background: #1d4ed8; }
+
+    .error {
+      margin-top: 12px;
+      color: red;
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .section {
+      margin-top: 28px;
+    }
+
+    .section h3 {
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4px;
+      margin-bottom:12px;
+      font-size: 1rem;
+    }
+
+    .summary-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .summary-box {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px 18px;
+      text-align: center;
+      min-width: 110px;
+    }
+
+    .summary-box .val {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #2563eb;
+    }
+
+    .summary-box .lbl {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .tree-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .tree-card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 12px 16px;
+      min-width: 180px;
+    }
+
+    .tree-card .root {
+      font-weight: bold;
+      font-size: 1rem;
+      margin-bottom: 2px;
+    }
+
+    .tree-card .info {
+      font-size: 0.78rem;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .tree-card pre {
+      font-size: 0.82rem;
+      margin: 0;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 0.82rem;
+      font-family: monospace;
+    }
+
+    .tag.bad {
+      background: #fde8e8;
+      border-color: #f87171;
+    }
+
+    .none-text {
+      font-size: 0.85rem;
+      color: #999;
+    }
+
+    #output { display: none; }
+  </style>
+</head>
+<body>
+
+  <h2>BFHL Node Hierarchy</h2>
+  <p class="sub">Enter edges below and click Submit to see the tree breakdown.</p>
+
+  <textarea id="inputBox" placeholder="A->B, A->C, B->D, X->Y, Y->Z, Z->X"></textarea>
+  <br/>
+  <button onclick="submit()">Submit</button>
+  <div class="error" id="errMsg"></div>
+
+  <div id="output">
+
+    <div class="section">
+      <h3>Summary</h3>
+      <div class="summary-row">
+        <div class="summary-box">
+          <div class="val" id="sTrees">0</div>
+          <div class="lbl">Trees</div>
+        </div>
+        <div class="summary-box">
+          <div class="val" id="sCycles">0</div>
+          <div class="lbl">Cycles</div>
+        </div>
+        <div class="summary-box">
+          <div class="val" id="sRoot">-</div>
+          <div class="lbl">Largest Root</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Hierarchies</h3>
+      <div class="tree-grid" id="treeGrid"></div>
+    </div>
+
+    <div class="section">
+      <h3>Invalid Entries</h3>
+      <div class="tags" id="invalidTags"></div>
+    </div>
+
+    <div class="section">
+      <h3>Duplicate Edges</h3>
+      <div class="tags" id="dupeTags"></div>
+    </div>
+
+  </div>
+
+<script>
+  
+  function treeToText(node, obj, indent) {
+    let out = indent + node + "\n";
+    for (const child of Object.keys(obj)) {
+      out += treeToText(child, obj[child], indent + "  ");
+    }
+    return out;
+  }
+
+  async function submit() {
+    const raw = document.getElementById("inputBox").value.trim();
+    const errMsg = document.getElementById("errMsg");
+    errMsg.style.display = "none";
+
+    if (!raw) {
+      errMsg.textContent = "Please enter something first.";
+      errMsg.style.display = "block";
+      return;
+    }
+
+    const data = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+
+    try {
+      const res  = await fetch("http://localhost:3000/bfhl", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ data }),
+      });
+
+      if (!res.ok) throw new Error("Server error " + res.status);
+      const json = await res.json();
+      showOutput(json);
+
+    } catch (e) {
+      errMsg.textContent = "Request failed: " + e.message;
+      errMsg.style.display = "block";
+    }
+  }
+
+  function showOutput(json) {
+    
+    document.getElementById("sTrees").textContent  = json.summary.total_trees;
+    document.getElementById("sCycles").textContent = json.summary.total_cycles;
+    document.getElementById("sRoot").textContent   = json.summary.largest_tree_root || "-";
+
+    
+    const grid = document.getElementById("treeGrid");
+    grid.innerHTML = "";
+
+    for (const h of json.hierarchies) {
+      const card = document.createElement("div");
+      card.className = "tree-card";
+
+      let treeText = "";
+      if (h.has_cycle) {
+        treeText = "(cycle)";
+      } else {
+        treeText = treeToText(h.root, h.tree[h.root], "").trimEnd();
+      }
+
+      card.innerHTML = `
+        <div class="root">Root: ${h.root}</div>
+        <div class="info">${h.has_cycle ? "cyclic" : "depth: " + h.depth}</div>
+        <pre>${treeText}</pre>
+      `;
+      grid.appendChild(card);
+    }
+
+    
+    const invTags = document.getElementById("invalidTags");
+    invTags.innerHTML = json.invalid_entries.length
+      ? json.invalid_entries.map(e => `<span class="tag bad">${e}</span>`).join("")
+      : `<span class="none-text">None</span>`;
+
+    
+    const dupeTags = document.getElementById("dupeTags");
+    dupeTags.innerHTML = json.duplicate_edges.length
+      ? json.duplicate_edges.map(e => `<span class="tag">${e}</span>`).join("")
+      : `<span class="none-text">None</span>`;
+
+    document.getElementById("output").style.display = "block";
+  }
+</script>
+</body>
+</html>
